@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PuppySocial Real-Time</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root { --p: #6c5ce7; --s: #a29bfe; --danger: #ff7675; --bg: #f0f2f5; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding-bottom: 100px; }
+        
+        .app { max-width: 500px; margin: 0 auto; background: white; min-height: 100vh; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        header { background: var(--p); color: white; padding: 20px; text-align: center; position: sticky; top: 0; z-index: 10; }
+        
+        /* Muro de Perfiles */
+        .feed { padding: 15px; }
+        .pet-card { background: white; border-radius: 15px; border: 1px solid #eee; overflow: hidden; position: relative; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .pet-img { width: 100%; height: 250px; object-fit: cover; background: #f0f0f0; }
+        .pet-info { padding: 15px; }
+        
+        .status-badge { position: absolute; top: 10px; right: 10px; padding: 6px 15px; border-radius: 20px; color: white; font-size: 12px; font-weight: bold; z-index: 5; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+
+        /* QR y Acciones */
+        .qr-zone { text-align: center; padding: 20px; background: #f8f9fa; border-radius: 10px; margin-top: 10px; display: none; border: 2px dashed #ddd; }
+        .qr-zone.active { display: block; animation: fadeIn 0.5s; }
+
+        /* Formulario */
+        .fab { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 70px; height: 70px; background: var(--p); color: white; border-radius: 50%; border: none; font-size: 35px; cursor: pointer; box-shadow: 0 5px 20px rgba(108, 92, 231, 0.5); z-index: 100; transition: 0.3s; }
+        .fab:hover { transform: translateX(-50%) scale(1.1); }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 200; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; padding: 25px; border-radius: 25px; width: 85%; max-width: 400px; animation: slideUp 0.3s; }
+        
+        input, select { width: 100%; padding: 14px; margin: 10px 0; border: 1px solid #ddd; border-radius: 12px; box-sizing: border-box; font-size: 16px; }
+        .btn { background: var(--p); color: white; border: none; padding: 15px; width: 100%; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        .btn:active { transform: scale(0.98); }
+
+        @keyframes slideUp { from { transform: translateY(100px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <header>
+        <h1>🐾 PuppySocial</h1>
+        <p>Muro Comunitario de Perritos</p>
+    </header>
+
+    <div class="feed" id="muro">
+        </div>
+
+    <button class="fab" onclick="toggleModal()">+</button>
+</div>
+
+<div class="modal" id="registroModal">
+    <div class="modal-content">
+        <h2 style="margin-top:0">Nuevo Registro</h2>
+        <input type="text" id="nombre" placeholder="Nombre del perrito">
+        <input type="text" id="ubicacion" placeholder="Ciudad o zona">
+        <select id="casa">
+            <option value="🏠 Con hogar">🏠 Tiene hogar estable</option>
+            <option value="🔍 En adopción">🔍 Busca familia</option>
+        </select>
+        <input type="text" id="vacunas" placeholder="Estatus de vacunas">
+        <label style="font-size: 12px; color: #666;">Selecciona una foto (Opcional):</label>
+        <input type="file" id="foto" accept="image/*">
+        
+        <button class="btn" onclick="crearPerfil()">🚀 Publicar Perfil</button>
+        <button class="btn" style="background:#eee; color:#444; margin-top:10px" onclick="toggleModal()">Cerrar</button>
+    </div>
+</div>
+
+<script>
+    // 1. Base de datos con respaldo
+    let perritos = JSON.parse(localStorage.getItem('puppySocialDB')) || [];
+
+    // 2. Función para mostrar los perfiles
+    function renderMuro() {
+        const muro = document.getElementById('muro');
+        if (perritos.length === 0) {
+            muro.innerHTML = '<div style="text-align:center; padding:50px; color:#888;"><h3>Aún no hay perritos.</h3><p>¡Sé el primero en agregar uno!</p></div>';
+            return;
+        }
+
+        muro.innerHTML = perritos.map((p, index) => `
+            <div class="pet-card">
+                <div class="status-badge" style="background:${p.casa.includes('🏠') ? '#1dd1a1' : '#ff9f43'}">
+                    ${p.casa}
+                </div>
+                <img src="${p.foto}" class="pet-img" onerror="this.src='https://images.unsplash.com/photo-1517849845537-4d257902454a?w=400'">
+                <div class="pet-info">
+                    <h2 style="margin:0">${p.nombre}</h2>
+                    <p style="color:#666; margin:5px 0;">📍 ${p.ubicacion}</p>
+                    <p><b>🩺 Salud:</b> ${p.vacunas || 'No especificado'}</p>
+                    
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn" style="background:var(--s); flex:2" onclick="toggleQR('${p.id}')">Generar QR</button>
+                        <button class="btn" style="background:var(--danger); flex:1" onclick="eliminarPerfil(${index})">🗑️</button>
+                    </div>
+                    
+                    <div id="qr-${p.id}" class="qr-zone">
+                        <p style="margin-top:0"><small>Placa Virtual de ${p.nombre}</small></p>
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://social.dog/profile/${p.id}" style="width:120px">
+                        <p><small>Ubicación: ${p.ubicacion}</small></p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 3. Función para crear perfil con validación mejorada
+    function crearPerfil() {
+        const nombre = document.getElementById('nombre').value;
+        const ubicacion = document.getElementById('ubicacion').value;
+        const casa = document.getElementById('casa').value;
+        const vacunas = document.getElementById('vacunas').value;
+        const fotoInput = document.getElementById('foto');
+
+        if(!nombre || !ubicacion) {
+            alert("⚠️ Por favor escribe al menos el nombre y la ubicación.");
+            return;
+        }
+
+        const nuevoPerro = {
+            id: 'PET-' + Date.now(),
+            nombre,
+            ubicacion,
+            casa,
+            vacunas,
+            foto: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400" // Foto por defecto
+        };
+
+        // Si hay una foto, procesarla, si no, guardar directamente
+        if (fotoInput.files && fotoInput.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                nuevoPerro.foto = e.target.result;
+                finalizarRegistro(nuevoPerro);
+            };
+            reader.readAsDataURL(fotoInput.files[0]);
+        } else {
+            finalizarRegistro(nuevoPerro);
+        }
+    }
+
+    function finalizarRegistro(perro) {
+        perritos.unshift(perro);
+        localStorage.setItem('puppySocialDB', JSON.stringify(perritos));
+        renderMuro();
+        toggleModal();
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        
+        // Limpiar campos
+        document.getElementById('nombre').value = "";
+        document.getElementById('ubicacion').value = "";
+        document.getElementById('vacunas').value = "";
+        document.getElementById('foto').value = "";
+    }
+
+    function toggleModal() {
+        const modal = document.getElementById('registroModal');
+        modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+    function toggleQR(id) {
+        const el = document.getElementById(`qr-${id}`);
+        el.classList.toggle('active');
+    }
+
+    function eliminarPerfil(index) {
+        if(confirm("¿Seguro que quieres borrar este perfil?")) {
+            perritos.splice(index, 1);
+            localStorage.setItem('puppySocialDB', JSON.stringify(perritos));
+            renderMuro();
+        }
+    }
+
+    // Iniciar
+    renderMuro();
+</script>
+
+</body>
+</html>
